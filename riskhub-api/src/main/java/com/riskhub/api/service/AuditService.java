@@ -99,10 +99,10 @@ public class AuditService {
     /**
      * 内部审核执行（同步模式 & 异步Consumer共用）
      *
-     * 双轨模式：AI 主审 + 规则兜底
-     * 1. 优先调用 AI 模型进行语义审核
-     * 2. AI 可用且置信度高 → 直接采信 AI 结果，仅补充行为规则
-     * 3. AI 不可用或置信度低 → 降级走全量规则引擎
+     * 三层架构：同步预筛 → AI 主审 → 规则兜底
+     * 1. 同步预筛：确定性违规即时拦截（手机号/严重违禁词/二维码等）
+     * 2. AI 主审：语义理解深度审核
+     * 3. 规则兜底：AI 不可用时降级走全量规则
      */
     public AuditResultResponse submitInternal(AuditSubmitRequest request) {
         long startTime = System.currentTimeMillis();
@@ -120,7 +120,45 @@ public class AuditService {
             auditRequestMapper.updateById(requestEntity);
         }
 
-        // === 双轨模式：AI 主审 ===
+        // === 第一层：同步预筛（确定性违规即时拦截） ===
+        List<RuleHitResult> syncHits = ruleEngineService.executeSyncRules(request);
+        if (!syncHits.isEmpty()) {
+            // 同步规则命中 → 立即返回处置结果，不调 AI
+            PolicyDecision decision = policyRouterService.route(request, syncHits);
+            long latencyMs = System.currentTimeMillis() - startTime;
+
+            AuditResultEntity resultEntity = new AuditResultEntity();
+            resultEntity.setRequestId(request.getRequestId());
+            resultEntity.setRiskTopic(decision.getRiskTopic());
+            resultEntity.setRiskLevel(decision.getRiskLevel());
+            resultEntity.setFinalJudgment(decision.getFinalJudgment());
+            resultEntity.setAction(decision.getAction());
+            resultEntity.setRouteReason("同步拦截: " + decision.getRouteReason());
+            resultEntity.setRuleVersion(decision.getRuleVersion());
+            resultEntity.setPolicyVersion(decision.getPolicyVersion());
+            resultEntity.setLatencyMs((int) latencyMs);
+            auditResultMapper.insert(resultEntity);
+
+            requestEntity.setStatus("completed");
+            auditRequestMapper.updateById(requestEntity);
+
+            AuditResultResponse response = new AuditResultResponse();
+            response.setRequestId(request.getRequestId());
+            response.setStatus("completed");
+            response.setRiskTopic(decision.getRiskTopic());
+            response.setRiskLevel(decision.getRiskLevel());
+            response.setFinalJudgment(decision.getFinalJudgment());
+            response.setAction(decision.getAction());
+            response.setRouteReason("同步拦截: " + decision.getRouteReason());
+            response.setLatencyMs((int) latencyMs);
+
+            log.info("同步拦截 requestId={} action={} rule={} latency={}ms",
+                    request.getRequestId(), decision.getAction(),
+                    syncHits.get(0).getRuleId(), latencyMs);
+            return response;
+        }
+
+        // === 第二层：AI 主审（语义深度审核） ===
         ModelJudgeResponse modelResponse = modelAdapterService.judge(request);
         String modelVersion = null;
         List<RuleHitResult> ruleHits;
@@ -129,7 +167,6 @@ public class AuditService {
                 && modelResponse.getConfidence() != null && modelResponse.getConfidence() >= 0.8;
 
         if (aiPrimary) {
-            // AI 可用且高置信度 → 采信 AI 结果
             modelVersion = modelResponse.getModelVersion();
             RuleHitResult modelHit = new RuleHitResult(
                     "model_" + (modelResponse.getModelName() != null ? modelResponse.getModelName() : "guard-ml"),
@@ -140,17 +177,16 @@ public class AuditService {
                     modelResponse.getModelVersion()
             );
 
-            // 仅执行行为类规则作为补充（不执行关键词/正则等语义规则）
             List<RuleHitResult> behaviorHits = ruleEngineService.executeBehaviorRulesOnly(request);
             ruleHits = new java.util.ArrayList<>();
-            ruleHits.add(modelHit); // AI 结果最高优先级
-            ruleHits.addAll(behaviorHits); // 行为规则补充
+            ruleHits.add(modelHit);
+            ruleHits.addAll(behaviorHits);
 
             log.info("AI主审模式 requestId={} confidence={} riskLevel={} topic={}",
                     request.getRequestId(), modelResponse.getConfidence(),
                     modelResponse.getRiskLevel(), modelResponse.getTopic());
         } else {
-            // AI 不可用或低置信度 → 降级走全量规则引擎
+            // === 第三层：规则兜底（AI 不可用时降级） ===
             if (modelResponse != null) {
                 modelVersion = modelResponse.getModelVersion();
             }
@@ -179,11 +215,9 @@ public class AuditService {
         resultEntity.setLatencyMs((int) latencyMs);
         auditResultMapper.insert(resultEntity);
 
-        // 更新请求状态
         requestEntity.setStatus("completed");
         auditRequestMapper.updateById(requestEntity);
 
-        // 构造响应
         AuditResultResponse response = new AuditResultResponse();
         response.setRequestId(request.getRequestId());
         response.setStatus("completed");

@@ -21,6 +21,7 @@ public class RiskRuleEntity {
     private String actionHint;
     private Integer priority;
     private Boolean enabled;
+    private Boolean syncEnabled;
     private String version;
 
     @TableField(fill = FieldFill.INSERT)
@@ -49,6 +50,8 @@ public class RiskRuleEntity {
     public void setPriority(Integer priority) { this.priority = priority; }
     public Boolean getEnabled() { return enabled; }
     public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+    public Boolean getSyncEnabled() { return syncEnabled; }
+    public void setSyncEnabled(Boolean syncEnabled) { this.syncEnabled = syncEnabled; }
     public String getVersion() { return version; }
     public void setVersion(String version) { this.version = version; }
     public LocalDateTime getCreatedAt() { return createdAt; }

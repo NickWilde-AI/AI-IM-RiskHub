@@ -61,6 +61,32 @@ public class RuleEngineService {
     }
 
     /**
+     * 仅执行同步预筛规则（sync_enabled=true），用于即时拦截确定性违规。
+     * 命中即可立即返回处置结果，不需要等 AI。
+     */
+    public List<RuleHitResult> executeSyncRules(AuditSubmitRequest request) {
+        List<RiskRuleEntity> rules = loadEnabledRules();
+        List<RuleHitResult> hits = new ArrayList<>();
+
+        for (RiskRuleEntity rule : rules) {
+            // 只执行标记了同步预筛的规则
+            if (!Boolean.TRUE.equals(rule.getSyncEnabled())) {
+                continue;
+            }
+            try {
+                JsonNode conditionNode = objectMapper.readTree(rule.getConditionExpr());
+                RuleHitResult hit = RuleMatcher.match(rule, request, conditionNode);
+                if (hit != null) {
+                    hits.add(hit);
+                }
+            } catch (Exception e) {
+                log.warn("同步规则[{}]解析异常: {}", rule.getRuleId(), e.getMessage());
+            }
+        }
+        return hits;
+    }
+
+    /**
      * 仅执行行为类规则（behavior_threshold），用于 AI 主审模式下的补充判定。
      * 语义类规则（keyword/regex/composite）交给 AI 处理，不在此执行。
      */

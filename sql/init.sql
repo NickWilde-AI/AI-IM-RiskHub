@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS risk_rule (
     action_hint VARCHAR(32) NOT NULL COMMENT '建议动作',
     priority INT NOT NULL DEFAULT 0 COMMENT '优先级，数字越大优先级越高',
     enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+    sync_enabled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否同步预筛(1=同步即时拦截,0=仅异步/降级时执行)',
     version VARCHAR(32) NOT NULL DEFAULT 'v1.0.0' COMMENT '规则版本',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -80,32 +81,32 @@ CREATE TABLE IF NOT EXISTS policy_config (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='策略配置表';
 
 -- 插入示例规则数据
-INSERT INTO risk_rule (rule_id, rule_name, risk_topic, condition_type, condition_expr, risk_level, action_hint, priority, enabled, version) VALUES
--- IM 消息场景
-('rule_keyword_001', '外部联系方式关键词', '诈骗引流', 'keyword', '{"keywords": ["加微信", "加QQ", "加V", "私聊发你", "扫码加"]}', 'mid_risk', 'warning', 10, 1, 'v1.0.0'),
-('rule_keyword_002', '色情诱导关键词', '色情诱导', 'keyword', '{"keywords": ["约吗", "寂寞吗", "上门服务", "看片"]}', 'high_risk', 'reject_content', 20, 1, 'v1.0.0'),
-('rule_regex_001', '手机号正则', '诈骗引流', 'regex', '{"pattern": "1[3-9]\\\\d{9}"}', 'low_risk', 'warning', 5, 1, 'v1.0.0'),
-('rule_behavior_001', '高频外联行为', '诈骗引流', 'behavior_threshold', '{"field": "external_contact_count", "operator": ">=", "threshold": 10}', 'mid_risk', 'human_review', 15, 1, 'v1.0.0'),
-('rule_composite_001', '引流+收益承诺组合', '诈骗引流', 'composite', '{"logic": "AND", "conditions": [{"type": "keyword", "keywords": ["加微信", "加V"]}, {"type": "keyword", "keywords": ["稳赚", "包赚", "日入", "躺赚"]}]}', 'high_risk', 'ban_candidate', 25, 1, 'v1.0.0'),
+INSERT INTO risk_rule (rule_id, rule_name, risk_topic, condition_type, condition_expr, risk_level, action_hint, priority, enabled, sync_enabled, version) VALUES
+-- IM 消息场景（sync_enabled=1 的规则同步即时拦截）
+('rule_keyword_001', '外部联系方式关键词', '诈骗引流', 'keyword', '{"keywords": ["加微信", "加QQ", "加V", "私聊发你", "扫码加"]}', 'mid_risk', 'warning', 10, 1, 0, 'v1.0.0'),
+('rule_keyword_002', '色情诱导关键词', '色情诱导', 'keyword', '{"keywords": ["约吗", "寂寞吗", "上门服务", "看片"]}', 'high_risk', 'reject_content', 20, 1, 1, 'v1.0.0'),
+('rule_regex_001', '手机号正则', '诈骗引流', 'regex', '{"pattern": "1[3-9]\\\\d{9}"}', 'mid_risk', 'reject_content', 5, 1, 1, 'v1.0.0'),
+('rule_behavior_001', '高频外联行为', '诈骗引流', 'behavior_threshold', '{"field": "external_contact_count", "operator": ">=", "threshold": 10}', 'mid_risk', 'human_review', 15, 1, 0, 'v1.0.0'),
+('rule_composite_001', '引流+收益承诺组合', '诈骗引流', 'composite', '{"logic": "AND", "conditions": [{"type": "keyword", "keywords": ["加微信", "加V"]}, {"type": "keyword", "keywords": ["稳赚", "包赚", "日入", "躺赚"]}]}', 'high_risk', 'ban_candidate', 25, 1, 1, 'v1.0.0'),
 -- 注册场景
-('rule_register_001', '高频注册IP', '批量注册', 'behavior_threshold', '{"field": "ip_register_count_1h", "operator": ">=", "threshold": 5}', 'high_risk', 'reject_content', 20, 1, 'v1.0.0'),
-('rule_register_002', '黑名单手机号段', '批量注册', 'regex', '{"pattern": "^(170|171)\\\\d{8}$"}', 'mid_risk', 'human_review', 15, 1, 'v1.0.0'),
-('rule_register_003', '设备指纹重复注册', '批量注册', 'behavior_threshold', '{"field": "device_register_count", "operator": ">=", "threshold": 3}', 'high_risk', 'reject_content', 22, 1, 'v1.0.0'),
+('rule_register_001', '高频注册IP', '批量注册', 'behavior_threshold', '{"field": "ip_register_count_1h", "operator": ">=", "threshold": 5}', 'high_risk', 'reject_content', 20, 1, 1, 'v1.0.0'),
+('rule_register_002', '黑名单手机号段', '批量注册', 'regex', '{"pattern": "^(170|171)\\\\d{8}$"}', 'mid_risk', 'human_review', 15, 1, 1, 'v1.0.0'),
+('rule_register_003', '设备指纹重复注册', '批量注册', 'behavior_threshold', '{"field": "device_register_count", "operator": ">=", "threshold": 3}', 'high_risk', 'reject_content', 22, 1, 1, 'v1.0.0'),
 -- 登录场景
-('rule_login_001', '异地登录检测', '账号盗用', 'behavior_threshold', '{"field": "login_city_change", "operator": ">=", "threshold": 1}', 'mid_risk', 'warning', 10, 1, 'v1.0.0'),
-('rule_login_002', '暴力破解频率', '账号盗用', 'behavior_threshold', '{"field": "login_fail_count_10m", "operator": ">=", "threshold": 5}', 'high_risk', 'limit_account', 20, 1, 'v1.0.0'),
+('rule_login_001', '异地登录检测', '账号盗用', 'behavior_threshold', '{"field": "login_city_change", "operator": ">=", "threshold": 1}', 'mid_risk', 'warning', 10, 1, 0, 'v1.0.0'),
+('rule_login_002', '暴力破解频率', '账号盗用', 'behavior_threshold', '{"field": "login_fail_count_10m", "operator": ">=", "threshold": 5}', 'high_risk', 'limit_account', 20, 1, 1, 'v1.0.0'),
 -- 资料编辑场景
-('rule_profile_001', '昵称违规关键词', '违规资料', 'keyword', '{"keywords": ["代开", "收卡", "兼职日结", "贷款"]}', 'mid_risk', 'reject_content', 12, 1, 'v1.0.0'),
-('rule_profile_002', '签名引流关键词', '诈骗引流', 'keyword', '{"keywords": ["加我微信", "V信", "私我有惊喜"]}', 'mid_risk', 'warning', 10, 1, 'v1.0.0'),
+('rule_profile_001', '昵称违规关键词', '违规资料', 'keyword', '{"keywords": ["代开", "收卡", "兼职日结", "贷款"]}', 'mid_risk', 'reject_content', 12, 1, 0, 'v1.0.0'),
+('rule_profile_002', '签名引流关键词', '诈骗引流', 'keyword', '{"keywords": ["加我微信", "V信", "私我有惊喜"]}', 'mid_risk', 'warning', 10, 1, 0, 'v1.0.0'),
 -- 匹配/社交场景
-('rule_match_001', '批量右滑检测', '机器人行为', 'behavior_threshold', '{"field": "swipe_right_count_1h", "operator": ">=", "threshold": 200}', 'mid_risk', 'limit_account', 15, 1, 'v1.0.0'),
-('rule_match_002', '批量加好友检测', '引流矩阵', 'behavior_threshold', '{"field": "add_friend_count_1d", "operator": ">=", "threshold": 50}', 'high_risk', 'human_review', 18, 1, 'v1.0.0'),
+('rule_match_001', '批量右滑检测', '机器人行为', 'behavior_threshold', '{"field": "swipe_right_count_1h", "operator": ">=", "threshold": 200}', 'mid_risk', 'limit_account', 15, 1, 1, 'v1.0.0'),
+('rule_match_002', '批量加好友检测', '引流矩阵', 'behavior_threshold', '{"field": "add_friend_count_1d", "operator": ">=", "threshold": 50}', 'high_risk', 'human_review', 18, 1, 0, 'v1.0.0'),
 -- 动态/评论场景
-('rule_feed_001', '动态广告关键词', '广告引流', 'keyword', '{"keywords": ["免费领", "限时优惠", "点击链接", "扫码领取"]}', 'mid_risk', 'reject_content', 12, 1, 'v1.0.0'),
-('rule_feed_002', '评论刷屏检测', '垃圾内容', 'behavior_threshold', '{"field": "comment_count_1m", "operator": ">=", "threshold": 10}', 'mid_risk', 'limit_account', 14, 1, 'v1.0.0'),
+('rule_feed_001', '动态广告关键词', '广告引流', 'keyword', '{"keywords": ["免费领", "限时优惠", "点击链接", "扫码领取"]}', 'mid_risk', 'reject_content', 12, 1, 0, 'v1.0.0'),
+('rule_feed_002', '评论刷屏检测', '垃圾内容', 'behavior_threshold', '{"field": "comment_count_1m", "operator": ">=", "threshold": 10}', 'mid_risk', 'limit_account', 14, 1, 1, 'v1.0.0'),
 -- 充值/交易场景
-('rule_payment_001', '异常充值金额', '洗钱风险', 'behavior_threshold', '{"field": "recharge_amount", "operator": ">=", "threshold": 10000}', 'mid_risk', 'human_review', 15, 1, 'v1.0.0'),
-('rule_payment_002', '高频小额充值', '洗钱风险', 'behavior_threshold', '{"field": "recharge_count_1h", "operator": ">=", "threshold": 10}', 'high_risk', 'human_review', 18, 1, 'v1.0.0');
+('rule_payment_001', '异常充值金额', '洗钱风险', 'behavior_threshold', '{"field": "recharge_amount", "operator": ">=", "threshold": 10000}', 'mid_risk', 'human_review', 15, 1, 0, 'v1.0.0'),
+('rule_payment_002', '高频小额充值', '洗钱风险', 'behavior_threshold', '{"field": "recharge_count_1h", "operator": ">=", "threshold": 10}', 'high_risk', 'human_review', 18, 1, 1, 'v1.0.0');
 
 -- 插入示例策略数据
 INSERT INTO policy_config (policy_id, policy_name, biz_type, risk_topic, risk_level, action, gray_ratio, enabled, version) VALUES
