@@ -3,11 +3,12 @@ package com.riskhub.common.config;
 import com.riskhub.common.interceptor.ApiTokenInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Web 配置：注册拦截器
+ * Web 配置：注册拦截器 + CORS
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -34,5 +35,15 @@ public class WebConfig implements WebMvcConfigurer {
                             "/api/v1/review/tasks"
                     );
         }
+    }
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true)
+                .maxAge(3600);
     }
 }
