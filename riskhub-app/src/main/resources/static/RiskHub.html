@@ -187,7 +187,8 @@ function renderBar(container, items, colors) {
 
 function riskTag(level) {
   const map = {high_risk:'tag-high',mid_risk:'tag-mid',low_risk:'tag-low',no_risk:'tag-no'};
-  return `<span class="tag ${map[level]||'tag-no'}">${level||'--'}</span>`;
+  const label = {high_risk:'高风险',mid_risk:'中风险',low_risk:'低风险',no_risk:'无风险'};
+  return `<span class="tag ${map[level]||'tag-no'}">${label[level]||level||'--'}</span>`;
 }
 
 function statusTag(enabled) {
@@ -196,7 +197,8 @@ function statusTag(enabled) {
 
 function reviewStatusTag(status) {
   const map = {pending:'tag-mid',assigned:'tag-low',processing:'tag-low',approved:'tag-on',rejected:'tag-high'};
-  return `<span class="tag ${map[status]||'tag-no'}">${status||'--'}</span>`;
+  const label = {pending:'待领取',assigned:'已领取',processing:'审核中',approved:'通过',rejected:'驳回',escalated:'升级',expired:'过期'};
+  return `<span class="tag ${map[status]||'tag-no'}">${label[status]||status||'--'}</span>`;
 }
 
 async function refreshMetrics() {
@@ -217,14 +219,15 @@ async function refreshMetrics() {
     document.getElementById('kpiViolation').textContent = violationRate + '%';
 
     // Action distribution
-    const actionColors = ['#16a34a','#d97706','#7c3aed','#dc2626','#2563eb'];
-    const actionItems = Object.entries(actionDist).map(([k,v]) => ({label:k, value:v})).sort((a,b) => b.value - a.value);
+    const actionLabel = {ignore:'放行',warning:'警告',human_review:'人工复核',reject_content:'拦截内容',ban_candidate:'封禁候选',limit_account:'限流'};
+    const actionColors = ['#16a34a','#d97706','#7c3aed','#dc2626','#2563eb','#0891b2'];
+    const actionItems = Object.entries(actionDist).map(([k,v]) => ({label:actionLabel[k]||k, value:v})).sort((a,b) => b.value - a.value);
     renderBar(document.getElementById('actionChart'), actionItems, actionColors);
 
     // Risk level distribution
-    const riskDist = d.riskLevelDistribution || {};
+    const riskLabel = {high_risk:'高风险',mid_risk:'中风险',low_risk:'低风险',no_risk:'无风险'};
     const riskColors = ['#dc2626','#d97706','#16a34a','#6b7a90'];
-    const riskItems = Object.entries(riskDist).map(([k,v]) => ({label:k, value:v})).sort((a,b) => b.value - a.value);
+    const riskItems = Object.entries(riskDist).map(([k,v]) => ({label:riskLabel[k]||k, value:v})).sort((a,b) => b.value - a.value);
     renderBar(document.getElementById('riskChart'), riskItems, riskColors);
 
     // Topic distribution
@@ -272,11 +275,12 @@ async function refreshRules() {
     const res = await fetchJSON('/api/v1/rules');
     const rules = res.data || [];
     document.getElementById('ruleBadge').textContent = rules.length + ' 条规则';
+    const typeLabel = {keyword:'关键词',regex:'正则',behavior_threshold:'行为阈值',composite:'组合规则',blacklist:'黑名单',whitelist:'白名单'};
     const tbody = document.querySelector('#rulesTable tbody');
     tbody.innerHTML = rules.map(r => `<tr>
       <td><code>${r.ruleId}</code></td>
       <td>${r.ruleName}</td>
-      <td><span class="tag tag-no">${r.conditionType}</span></td>
+      <td><span class="tag tag-no">${typeLabel[r.conditionType]||r.conditionType}</span></td>
       <td>${r.riskTopic}</td>
       <td>${riskTag(r.riskLevel)}</td>
       <td>${r.priority}</td>
@@ -290,13 +294,14 @@ async function refreshPolicies() {
     const res = await fetchJSON('/api/v1/policies');
     const policies = res.data || [];
     document.getElementById('policyBadge').textContent = policies.length + ' 条策略';
+    const actionLabel = {ignore:'放行',warning:'警告',human_review:'人工复核',reject_content:'拦截内容',ban_candidate:'封禁候选',limit_account:'限流'};
     const tbody = document.querySelector('#policiesTable tbody');
     tbody.innerHTML = policies.map(p => `<tr>
       <td><code>${p.policyId}</code></td>
       <td>${p.policyName}</td>
       <td><span class="tag tag-no">${p.bizType}</span></td>
       <td>${riskTag(p.riskLevel)}</td>
-      <td>${p.action}</td>
+      <td>${actionLabel[p.action]||p.action}</td>
       <td><strong>${p.grayRatio}%</strong></td>
       <td>${statusTag(p.enabled)}</td>
     </tr>`).join('');
