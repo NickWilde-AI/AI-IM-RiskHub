@@ -1,5 +1,8 @@
 package com.riskhub.model.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.riskhub.common.dto.AuditSubmitRequest;
 import com.riskhub.model.dto.ModelJudgeRequest;
 import com.riskhub.model.dto.ModelJudgeResponse;
@@ -9,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -42,6 +46,14 @@ public class ModelAdapterService {
         factory.setConnectTimeout(1000);
         factory.setReadTimeout(3000);
         this.restTemplate.setRequestFactory(factory);
+
+        // 配置 Jackson 支持 snake_case 字段名映射
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter(objectMapper);
+        this.restTemplate.getMessageConverters().removeIf(c -> c instanceof MappingJackson2HttpMessageConverter);
+        this.restTemplate.getMessageConverters().add(converter);
     }
 
     /**
@@ -59,13 +71,21 @@ public class ModelAdapterService {
             String url = baseUrl + "/judge";
             long start = System.currentTimeMillis();
 
-            ModelJudgeResponse response = restTemplate.postForObject(url, entity, ModelJudgeResponse.class);
+            // 获取原始 JSON 字符串，用配置了 SNAKE_CASE 的 ObjectMapper 手动解析
+            String jsonBody = restTemplate.postForObject(url, entity, String.class);
+
+            ObjectMapper snakeMapper = new ObjectMapper();
+            snakeMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            snakeMapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+            ModelJudgeResponse response = snakeMapper.readValue(jsonBody, ModelJudgeResponse.class);
 
             long elapsed = System.currentTimeMillis() - start;
-            log.info("模型调用成功 requestId={} model={} confidence={} latency={}ms shadow={}",
+            log.info("模型调用成功 requestId={} riskLevel={} topic={} confidence={} handling={} latency={}ms shadow={}",
                     request.getRequestId(),
-                    response != null ? response.getModelName() : "unknown",
+                    response != null ? response.getRiskLevel() : "null",
+                    response != null ? response.getTopic() : "null",
                     response != null ? response.getConfidence() : 0,
+                    response != null ? response.getHandlingSuggestion() : "null",
                     elapsed,
                     shadowMode);
 
