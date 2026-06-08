@@ -233,6 +233,7 @@ async function refreshMetrics() {
     renderBar(document.getElementById('actionChart'), actionItems, actionColors);
 
     // Risk level distribution
+    const riskDist = d.riskLevelDistribution || {};
     const riskLabel = {high_risk:'高风险',mid_risk:'中风险',low_risk:'低风险',no_risk:'无风险'};
     const riskColors = ['#dc2626','#d97706','#16a34a','#6b7a90'];
     const riskItems = Object.entries(riskDist).map(([k,v]) => ({label:riskLabel[k]||k, value:v})).sort((a,b) => b.value - a.value);
@@ -253,18 +254,32 @@ async function refreshHealth() {
   try {
     const res = await fetch(BASE + '/actuator/health');
     const data = await res.json();
-    const components = data.components || {};
     const items = [
       {name: 'Spring Boot', status: data.status === 'UP'},
-      {name: 'MySQL (DataSource)', status: components.db ? components.db.status === 'UP' : false},
-      {name: 'Redis', status: components.redis ? components.redis.status === 'UP' : false},
-      {name: 'DiskSpace', status: components.diskSpace ? components.diskSpace.status === 'UP' : true},
     ];
+    // 如果有 components 详情（需要配置 show-details）
+    const components = data.components || {};
+    if (components.db) items.push({name: 'MySQL', status: components.db.status === 'UP'});
+    else items.push({name: 'MySQL', status: data.status === 'UP'}); // 服务 UP 则推断 DB 正常
+    if (components.redis) items.push({name: 'Redis', status: components.redis.status === 'UP'});
+    else items.push({name: 'Redis', status: data.status === 'UP'});
     // Check Guard-ML
     try {
       const mlRes = await fetch('http://localhost:8000/health');
       items.push({name: 'Guard-ML (AI)', status: mlRes.ok});
     } catch { items.push({name: 'Guard-ML (AI)', status: false}); }
+
+    panel.innerHTML = items.map(i => `
+      <div class="health-item ${i.status ? 'health-up' : 'health-down'}">
+        <span>${i.status ? '✓' : '✗'}</span>
+        <span>${i.name}</span>
+        <span style="margin-left:auto;font-weight:600;color:${i.status ? 'var(--accent-green)' : 'var(--accent-red)'}">${i.status ? '正常' : '异常'}</span>
+      </div>
+    `).join('');
+  } catch {
+    panel.innerHTML = '<div class="health-item health-down"><span>✗</span><span>无法获取健康状态</span></div>';
+  }
+}
 
     panel.innerHTML = items.map(i => `
       <div class="health-item ${i.status ? 'health-up' : 'health-down'}">
