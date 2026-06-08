@@ -153,7 +153,8 @@ echo -e "${GREEN}═════════════════════
 echo -e "${GREEN}   全部启动完成！${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "  ${BLUE}Guard-ML 看板:${NC}  http://localhost:8000/static/dashboard.html"
+echo -e "  ${BLUE}Guard-ML 看板:${NC}  http://localhost:8000/static/Guard-ML.html"
+echo -e "  ${BLUE}RiskHub  看板:${NC}  http://localhost:8000/static/RiskHub.html"
 echo -e "  ${BLUE}Guard-ML API:${NC}   http://localhost:8000/health"
 if [ "$SKIP_RISKHUB" = false ]; then
   echo -e "  ${BLUE}RiskHub 看板:${NC}   http://localhost:8080/dashboard.html"
