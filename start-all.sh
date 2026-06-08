@@ -116,6 +116,8 @@ echo ""
 if [ "$SKIP_RISKHUB" = false ]; then
   echo -e "${YELLOW}[3/4] 启动 RiskHub Spring Boot (端口 8080)...${NC}"
   cd "$RISKHUB_DIR"
+  echo -e "  编译中 (mvn install)..."
+  mvn clean install -DskipTests -q 2>/dev/null
   mvn spring-boot:run -pl riskhub-app -q > "$LOG_DIR/riskhub.log" 2>&1 &
   RISKHUB_PID=$!
   echo -e "  ${GREEN}RiskHub PID: $RISKHUB_PID${NC}"
