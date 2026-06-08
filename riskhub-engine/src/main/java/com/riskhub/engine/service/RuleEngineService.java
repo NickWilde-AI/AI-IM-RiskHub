@@ -61,6 +61,32 @@ public class RuleEngineService {
     }
 
     /**
+     * 仅执行行为类规则（behavior_threshold），用于 AI 主审模式下的补充判定。
+     * 语义类规则（keyword/regex/composite）交给 AI 处理，不在此执行。
+     */
+    public List<RuleHitResult> executeBehaviorRulesOnly(AuditSubmitRequest request) {
+        List<RiskRuleEntity> rules = loadEnabledRules();
+        List<RuleHitResult> hits = new ArrayList<>();
+
+        for (RiskRuleEntity rule : rules) {
+            // 只执行行为阈值类规则
+            if (!"behavior_threshold".equals(rule.getConditionType())) {
+                continue;
+            }
+            try {
+                JsonNode conditionNode = objectMapper.readTree(rule.getConditionExpr());
+                RuleHitResult hit = RuleMatcher.match(rule, request, conditionNode);
+                if (hit != null) {
+                    hits.add(hit);
+                }
+            } catch (Exception e) {
+                log.warn("行为规则[{}]解析异常: {}", rule.getRuleId(), e.getMessage());
+            }
+        }
+        return hits;
+    }
+
+    /**
      * 加载启用的规则，优先从数据库查询（生产环境可加 Redis 缓存）
      */
     private List<RiskRuleEntity> loadEnabledRules() {

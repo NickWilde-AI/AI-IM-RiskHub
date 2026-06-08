@@ -98,6 +98,11 @@ public class AuditService {
 
     /**
      * 内部审核执行（同步模式 & 异步Consumer共用）
+     *
+     * 双轨模式：AI 主审 + 规则兜底
+     * 1. 优先调用 AI 模型进行语义审核
+     * 2. AI 可用且置信度高 → 直接采信 AI 结果，仅补充行为规则
+     * 3. AI 不可用或置信度低 → 降级走全量规则引擎
      */
     public AuditResultResponse submitInternal(AuditSubmitRequest request) {
         long startTime = System.currentTimeMillis();
@@ -115,27 +120,44 @@ public class AuditService {
             auditRequestMapper.updateById(requestEntity);
         }
 
-        // 执行规则引擎
-        List<RuleHitResult> ruleHits = ruleEngineService.executeRules(request);
-
-        // 调用模型服务（超时或不可用时返回 null，走规则兜底）
+        // === 双轨模式：AI 主审 ===
         ModelJudgeResponse modelResponse = modelAdapterService.judge(request);
         String modelVersion = null;
-        if (modelResponse != null) {
+        List<RuleHitResult> ruleHits;
+
+        boolean aiPrimary = modelResponse != null && !modelAdapterService.isShadowMode()
+                && modelResponse.getConfidence() != null && modelResponse.getConfidence() >= 0.8;
+
+        if (aiPrimary) {
+            // AI 可用且高置信度 → 采信 AI 结果
             modelVersion = modelResponse.getModelVersion();
-            // 如果非 Shadow 模式，且模型置信度高，将模型结果合并到规则命中中
-            if (!modelAdapterService.isShadowMode() && modelResponse.getConfidence() != null
-                    && modelResponse.getConfidence() >= 0.8) {
-                RuleHitResult modelHit = new RuleHitResult(
-                        "model_" + (modelResponse.getModelName() != null ? modelResponse.getModelName() : "unknown"),
-                        modelResponse.getTopic(),
-                        modelResponse.getRiskLevel(),
-                        modelResponse.getHandlingSuggestion(),
-                        "模型判断: " + modelResponse.getReason(),
-                        modelResponse.getModelVersion()
-                );
-                ruleHits.add(0, modelHit); // 模型结果优先级最高
+            RuleHitResult modelHit = new RuleHitResult(
+                    "model_" + (modelResponse.getModelName() != null ? modelResponse.getModelName() : "guard-ml"),
+                    modelResponse.getTopic(),
+                    modelResponse.getRiskLevel(),
+                    modelResponse.getHandlingSuggestion(),
+                    "AI审核: " + modelResponse.getReason(),
+                    modelResponse.getModelVersion()
+            );
+
+            // 仅执行行为类规则作为补充（不执行关键词/正则等语义规则）
+            List<RuleHitResult> behaviorHits = ruleEngineService.executeBehaviorRulesOnly(request);
+            ruleHits = new java.util.ArrayList<>();
+            ruleHits.add(modelHit); // AI 结果最高优先级
+            ruleHits.addAll(behaviorHits); // 行为规则补充
+
+            log.info("AI主审模式 requestId={} confidence={} riskLevel={} topic={}",
+                    request.getRequestId(), modelResponse.getConfidence(),
+                    modelResponse.getRiskLevel(), modelResponse.getTopic());
+        } else {
+            // AI 不可用或低置信度 → 降级走全量规则引擎
+            if (modelResponse != null) {
+                modelVersion = modelResponse.getModelVersion();
             }
+            ruleHits = ruleEngineService.executeRules(request);
+            log.info("规则兜底模式 requestId={} aiAvailable={} confidence={}",
+                    request.getRequestId(), modelResponse != null,
+                    modelResponse != null ? modelResponse.getConfidence() : "N/A");
         }
 
         // 策略路由
@@ -172,8 +194,9 @@ public class AuditService {
         response.setRouteReason(decision.getRouteReason());
         response.setLatencyMs((int) latencyMs);
 
-        log.info("审核完成 requestId={} action={} modelVersion={} latency={}ms",
-                request.getRequestId(), decision.getAction(), modelVersion, latencyMs);
+        log.info("审核完成 requestId={} action={} mode={} modelVersion={} latency={}ms",
+                request.getRequestId(), decision.getAction(),
+                aiPrimary ? "AI主审" : "规则兜底", modelVersion, latencyMs);
         return response;
     }
 
