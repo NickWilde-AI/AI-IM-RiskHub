@@ -56,11 +56,9 @@ public class AuditService {
     }
 
     /**
-     * 提交审核请求（同步模式）
+     * 提交审核请求入口（区分同步/异步）
      */
     public AuditResultResponse submit(AuditSubmitRequest request) {
-        long startTime = System.currentTimeMillis();
-
         // 幂等检查
         String idempotentKey = IDEMPOTENT_KEY_PREFIX + request.getRequestId();
         Boolean isNew = redisTemplate.opsForValue()
@@ -69,17 +67,53 @@ public class AuditService {
             return getResult(request.getRequestId());
         }
 
-        // 保存审核请求
-        AuditRequestEntity requestEntity = new AuditRequestEntity();
-        requestEntity.setRequestId(request.getRequestId());
-        requestEntity.setBizType(request.getBizType());
-        requestEntity.setScene(request.getScene());
-        requestEntity.setUserIdHash(hashUserId(request.getUserId()));
-        requestEntity.setContentId(request.getContentId());
-        requestEntity.setContentText(request.getContentText());
-        requestEntity.setMode(request.getMode());
-        requestEntity.setStatus("processing");
+        // 异步模式：保存请求后投递MQ，快速返回
+        if ("async".equals(request.getMode())) {
+            return submitAsync(request);
+        }
+
+        // 同步模式：直接执行审核
+        return submitInternal(request);
+    }
+
+    /**
+     * 异步提交：保存请求记录，返回 accepted 状态
+     */
+    private AuditResultResponse submitAsync(AuditSubmitRequest request) {
+        // 保存审核请求（状态 pending）
+        AuditRequestEntity requestEntity = buildRequestEntity(request);
+        requestEntity.setStatus("pending");
         auditRequestMapper.insert(requestEntity);
+
+        AuditResultResponse response = new AuditResultResponse();
+        response.setRequestId(request.getRequestId());
+        response.setStatus("accepted");
+        response.setAction("async_processing");
+        response.setRouteReason("已投递异步审核队列");
+        response.setLatencyMs(0);
+
+        log.info("异步审核已接收 requestId={}", request.getRequestId());
+        return response;
+    }
+
+    /**
+     * 内部审核执行（同步模式 & 异步Consumer共用）
+     */
+    public AuditResultResponse submitInternal(AuditSubmitRequest request) {
+        long startTime = System.currentTimeMillis();
+
+        // 保存或更新审核请求
+        LambdaQueryWrapper<AuditRequestEntity> existQuery = new LambdaQueryWrapper<>();
+        existQuery.eq(AuditRequestEntity::getRequestId, request.getRequestId());
+        AuditRequestEntity requestEntity = auditRequestMapper.selectOne(existQuery);
+        if (requestEntity == null) {
+            requestEntity = buildRequestEntity(request);
+            requestEntity.setStatus("processing");
+            auditRequestMapper.insert(requestEntity);
+        } else {
+            requestEntity.setStatus("processing");
+            auditRequestMapper.updateById(requestEntity);
+        }
 
         // 执行规则引擎
         List<RuleHitResult> ruleHits = ruleEngineService.executeRules(request);
@@ -152,6 +186,17 @@ public class AuditService {
         AuditResultEntity entity = auditResultMapper.selectOne(query);
 
         if (entity == null) {
+            // 可能是异步任务还在处理中
+            LambdaQueryWrapper<AuditRequestEntity> reqQuery = new LambdaQueryWrapper<>();
+            reqQuery.eq(AuditRequestEntity::getRequestId, requestId);
+            AuditRequestEntity reqEntity = auditRequestMapper.selectOne(reqQuery);
+            if (reqEntity != null && !"completed".equals(reqEntity.getStatus())) {
+                AuditResultResponse response = new AuditResultResponse();
+                response.setRequestId(requestId);
+                response.setStatus(reqEntity.getStatus());
+                response.setAction("processing");
+                return response;
+            }
             throw new BizException(404, "审核结果不存在: " + requestId);
         }
 
@@ -165,6 +210,18 @@ public class AuditService {
         response.setRouteReason(entity.getRouteReason());
         response.setLatencyMs(entity.getLatencyMs());
         return response;
+    }
+
+    private AuditRequestEntity buildRequestEntity(AuditSubmitRequest request) {
+        AuditRequestEntity entity = new AuditRequestEntity();
+        entity.setRequestId(request.getRequestId());
+        entity.setBizType(request.getBizType());
+        entity.setScene(request.getScene());
+        entity.setUserIdHash(hashUserId(request.getUserId()));
+        entity.setContentId(request.getContentId());
+        entity.setContentText(request.getContentText());
+        entity.setMode(request.getMode());
+        return entity;
     }
 
     private String hashUserId(String userId) {

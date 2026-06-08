@@ -47,3 +47,12 @@ riskhub:
     base-url: http://localhost:8000
     timeout-ms: 3000
     shadow-mode: false
+
+rocketmq:
+  name-server: ${ROCKETMQ_NAMESRV:localhost:9876}
+  producer:
+    group: riskhub-producer-group
+    send-message-timeout: 3000
+    retry-times-when-send-failed: 2
+  consumer:
+    enabled: ${ROCKETMQ_ENABLED:false}
