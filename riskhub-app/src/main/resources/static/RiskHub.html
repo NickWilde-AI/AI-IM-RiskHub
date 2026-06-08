@@ -281,18 +281,6 @@ async function refreshHealth() {
   }
 }
 
-    panel.innerHTML = items.map(i => `
-      <div class="health-item ${i.status ? 'health-up' : 'health-down'}">
-        <span>${i.status ? '✓' : '✗'}</span>
-        <span>${i.name}</span>
-        <span style="margin-left:auto;font-weight:600;color:${i.status ? 'var(--accent-green)' : 'var(--accent-red)'}">${i.status ? 'UP' : 'DOWN'}</span>
-      </div>
-    `).join('');
-  } catch {
-    panel.innerHTML = '<div class="health-item health-down"><span>✗</span><span>无法获取健康状态</span></div>';
-  }
-}
-
 async function refreshRules() {
   try {
     const res = await fetchJSON('/api/v1/rules');
