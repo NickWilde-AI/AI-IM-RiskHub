@@ -156,6 +156,7 @@ echo ""
 echo -e "  ${BLUE}Guard-ML 看板:${NC}  http://localhost:8000/static/dashboard.html"
 echo -e "  ${BLUE}Guard-ML API:${NC}   http://localhost:8000/health"
 if [ "$SKIP_RISKHUB" = false ]; then
+  echo -e "  ${BLUE}RiskHub 看板:${NC}   http://localhost:8080/dashboard.html"
   echo -e "  ${BLUE}RiskHub API:${NC}    http://localhost:8080/actuator/health"
   echo -e "  ${BLUE}RiskHub Demo:${NC}   cd ai-im-riskhub && ./demo.sh"
 fi

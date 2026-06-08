@@ -26,7 +26,13 @@ public class WebConfig implements WebMvcConfigurer {
         if (authEnabled) {
             registry.addInterceptor(apiTokenInterceptor)
                     .addPathPatterns("/api/**")
-                    .excludePathPatterns("/actuator/**");
+                    .excludePathPatterns(
+                            "/actuator/**",
+                            "/api/v1/metrics/**",
+                            "/api/v1/rules",
+                            "/api/v1/policies",
+                            "/api/v1/review/tasks"
+                    );
         }
     }
 }
