@@ -1,0 +1,27 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: riskhub-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: riskhub123
+      MYSQL_DATABASE: riskhub
+      MYSQL_USER: riskhub
+      MYSQL_PASSWORD: riskhub123
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - riskhub-mysql-data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  redis:
+    image: redis:7-alpine
+    container_name: riskhub-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - riskhub-redis-data:/data
+
+volumes:
+  riskhub-mysql-data:
+  riskhub-redis-data:
