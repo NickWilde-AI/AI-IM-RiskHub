@@ -153,6 +153,7 @@ body.dark .health-down{background:#450a0a;border-color:#991b1b;}
 
 <script>
 const BASE = '';
+const TOKEN = 'Bearer tk_admin_2024';
 let connected = false;
 
 function toggleDark() {
@@ -162,7 +163,7 @@ function toggleDark() {
 if (localStorage.getItem('dark') === '1') document.body.classList.add('dark');
 
 async function fetchJSON(url) {
-  const resp = await fetch(BASE + url);
+  const resp = await fetch(BASE + url, {headers: {'Authorization': TOKEN}});
   if (!resp.ok) throw new Error(resp.status);
   return resp.json();
 }
