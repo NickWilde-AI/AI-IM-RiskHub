@@ -7,7 +7,13 @@ public enum BizType {
     IM("im", "即时通讯"),
     COMMENT("comment", "评论"),
     LIVE("live", "直播"),
-    COMMUNITY("community", "社区动态");
+    COMMUNITY("community", "社区动态"),
+    REGISTER("register", "注册"),
+    LOGIN("login", "登录"),
+    PROFILE("profile", "资料编辑"),
+    MATCH("match", "匹配/社交"),
+    FEED("feed", "动态/帖子"),
+    PAYMENT("payment", "充值/交易");
 
     private final String code;
     private final String desc;
