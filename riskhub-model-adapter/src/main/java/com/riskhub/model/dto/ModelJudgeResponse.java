@@ -1,17 +1,32 @@
 package com.riskhub.model.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * 模型服务响应 DTO（对应 AI-IM-Guard-ML /judge 接口返回）
  */
 public class ModelJudgeResponse {
 
+    @JsonProperty("model_name")
     private String modelName;
+
+    @JsonProperty("model_version")
     private String modelVersion;
+
+    @JsonProperty("risk_level")
     private String riskLevel;
+
+    @JsonProperty("final_judgment")
     private String finalJudgment;
+
+    @JsonProperty("handling_suggestion")
     private String handlingSuggestion;
+
     private String topic;
+
     private Double confidence;
+
+    @JsonProperty("judgment_basis")
     private String reason;
 
     public String getModelName() { return modelName; }
